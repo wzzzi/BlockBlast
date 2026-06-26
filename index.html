@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+
+    <title>Block Blast</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div id="game">
+
+    <header>
+        <h1>BLOCK BLAST</h1>
+
+        <div id="scoreBox">
+            <div class="label">SCORE</div>
+            <div id="score">0</div>
+        </div>
+
+        <div id="bestBox">
+            <div class="label">BEST</div>
+            <div id="best">0</div>
+        </div>
+    </header>
+
+    <main>
+
+        <canvas id="board"
+                width="480"
+                height="480">
+        </canvas>
+
+        <div id="tray">
+
+            <canvas
+                id="piece0"
+                class="piece"
+                width="120"
+                height="120">
+            </canvas>
+
+            <canvas
+                id="piece1"
+                class="piece"
+                width="120"
+                height="120">
+            </canvas>
+
+            <canvas
+                id="piece2"
+                class="piece"
+                width="120"
+                height="120">
+            </canvas>
+
+        </div>
+
+    </main>
+
+    <div id="gameOver" class="hidden">
+
+        <h2>GAME OVER</h2>
+
+        <button id="restart">
+            다시 시작
+        </button>
+
+    </div>
+
+</div>
+
+<script src="game.js"></script>
+
+</body>
+</html>
