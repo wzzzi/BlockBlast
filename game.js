@@ -1,4 +1,3 @@
-```javascript
 const BOARD_SIZE = 8;
 const CELL_SIZE = 60;
 const GAP = 4;
@@ -692,4 +691,3 @@ tray = [];
 refillTray();
 drawBoard();
 
-```
