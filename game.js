@@ -1,1446 +1,288 @@
-const BOARD_SIZE = 8;
-const CELL_SIZE = 60;
-const GAP = 4;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
 
-const canvas = document.getElementById("board");
-const ctx = canvas.getContext("2d");
+// 화면 크기에 맞게 캔버스 해상도 동적 조절
+function resizeCanvas() {
+    const size = Math.min(window.innerWidth * 0.95, window.innerHeight * 0.55);
+    canvas.width = size;
+    canvas.height = size + 160; // 게임판(정사각형) + 하단 블록 영역(160px)
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
 
-canvas.width = BOARD_SIZE * CELL_SIZE;
-canvas.height = BOARD_SIZE * CELL_SIZE;
-
-const pieceCanvas = [
-    document.getElementById("piece0"),
-    document.getElementById("piece1"),
-    document.getElementById("piece2")
-];
-
-const pieceCtx = pieceCanvas.map(c=>c.getContext("2d"));
-
+// 게임 설정
+const GRID_SIZE = 8; 
+const CELL_SIZE = canvas.width / GRID_SIZE;
+let grid = Array(GRID_SIZE).fill().map(() => Array(GRID_SIZE).fill(0));
 let score = 0;
-let best = Number(localStorage.getItem("bestScore")||0);
 
-document.getElementById("best").textContent = best;
-
-const COLORS = [
-    "#6FD96F",
-    "#5FC5FF",
-    "#FFB74D",
-    "#F46C6C",
-    "#B388FF",
-    "#FFD54F",
-    "#4DD0E1"
+// 블록 모양 후보들 (Block Blast 스타일)
+const BLOCK_TEMPLATES = [
+    [[1]], // 1x1
+    [[1, 1, 1]], // 1x3 가로
+    [[1], [1], [1]], // 3x1 세로
+    [[1, 1], [1, 1]], // 2x2 네모
+    [[1, 1, 1], [0, 1, 0]], // T자
+    [[1, 0], [1, 0], [1, 1]], // L자
+    [[1, 1], [0, 1], [0, 1]]
 ];
 
-const SHAPES = [
-
-[[1]],
-
-[[1,1]],
-[[1],[1]],
-
-[[1,1,1]],
-[[1],[1],[1]],
-
-[[1,1,1,1]],
-[[1],[1],[1],[1]],
-
-[[1,1],[1,1]],
-
-[[1,0],[1,1]],
-[[0,1],[1,1]],
-
-[[1,1],[1,0]],
-[[1,1],[0,1]],
-
-[[1,1,1],[0,1,0]],
-
-[[0,1,0],[1,1,1]],
-
-[[1,0,0],
- [1,1,1]],
-
-[[0,0,1],
- [1,1,1]],
-
-[[1,1,1],
- [1,0,0]],
-
-[[1,1,1],
- [0,0,1]],
-
-[[1,1,0],
- [0,1,1]],
-
-[[0,1,1],
- [1,1,0]]
-
-];
-
-class Piece{
-
-    constructor(shape){
-
-        this.shape = JSON.parse(JSON.stringify(shape));
-
-        this.color =
-            COLORS[
-                Math.floor(
-                    Math.random()*COLORS.length
-                )
-            ];
-
-    }
-
-}
-
-const board = [];
-
-for(let y=0;y<BOARD_SIZE;y++){
-
-    board[y]=[];
-
-    for(let x=0;x<BOARD_SIZE;x++){
-
-        board[y][x]=null;
-
-    }
-
-}
-
-let tray=[];
-
-let selectedPiece = -1;
-
-function randomShape(){
-
-    return SHAPES[
-        Math.floor(
-            Math.random()*SHAPES.length
-        )
-    ];
-
-}
-
-function refillTray(){
-
-    while(tray.length<3){
-
-        tray.push(
-            new Piece(
-                randomShape()
-            )
-        );
-
-    }
-
-    drawTray();
-
-}
-
-function drawTray(){
-
-    for(let i=0;i<3;i++){
-
-        const c = pieceCanvas[i];
-        const g = pieceCtx[i];
-
-        g.clearRect(
-            0,
-            0,
-            c.width,
-            c.height
-        );
-
-        if(!tray[i]) continue;
-
-        const p = tray[i];
-
-        const cell = 24;
-
-        const rows = p.shape.length;
-        const cols = p.shape[0].length;
-
-        const ox =
-            (c.width-cols*cell)/2;
-
-        const oy =
-            (c.height-rows*cell)/2;
-
-        for(let y=0;y<rows;y++){
-
-            for(let x=0;x<cols;x++){
-
-                if(!p.shape[y][x]) continue;
-
-                g.fillStyle=p.color;
-
-                roundRectCanvas(
-                    g,
-                    ox+x*cell,
-                    oy+y*cell,
-                    cell-2,
-                    cell-2,
-                    6
-                );
-
-                g.fill();
-
-            }
-
-        }
-
-    }
-
-}
-
-function roundRectCanvas(
-    g,
-    x,
-    y,
-    w,
-    h,
-    r
-){
-
-    g.beginPath();
-
-    g.moveTo(x+r,y);
-
-    g.arcTo(
-        x+w,
-        y,
-        x+w,
-        y+h,
-        r
-    );
-
-    g.arcTo(
-        x+w,
-        y+h,
-        x,
-        y+h,
-        r
-    );
-
-    g.arcTo(
-        x,
-        y+h,
-        x,
-        y,
-        r
-    );
-
-    g.arcTo(
-        x,
-        y,
-        x+w,
-        y,
-        r
-    );
-
-    g.closePath();
-
-}
-
-function drawBoard(){
-
-    ctx.clearRect(
-        0,
-        0,
-        canvas.width,
-        canvas.height
-    );
-
-    for(let y=0;y<BOARD_SIZE;y++){
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            const px =
-                x*CELL_SIZE;
-
-            const py =
-                y*CELL_SIZE;
-
-            ctx.fillStyle =
-                "#DFC092";
-
-            if(board[y][x]){
-
-                ctx.fillStyle =
-                    board[y][x];
-
-            }
-
-            roundRectCanvas(
-                ctx,
-                px+2,
-                py+2,
-                CELL_SIZE-GAP,
-                CELL_SIZE-GAP,
-                10
-            );
-
-            ctx.fill();
-
-        }
-
-    }
-
-}
-
-function updateScore(add){
-
-    score += add;
-
-    document.getElementById(
-        "score"
-    ).textContent=score;
-
-    if(score>best){
-
-        best=score;
-
-        localStorage.setItem(
-            "bestScore",
-            best
-        );
-
-        document.getElementById(
-            "best"
-        ).textContent=best;
-
-    }
-
-}
-
-pieceCanvas.forEach((c,index)=>{
-
-    c.onclick=()=>{
-
-        selectedPiece=index;
-
-        document
-            .querySelectorAll(".piece")
-            .forEach(e=>
-                e.classList.remove(
-                    "selected"
-                )
-            );
-
-        c.classList.add(
-            "selected"
-        );
-
-    };
-
-});
-
-drawBoard();
-refillTray();
-
-function canPlace(piece, gx, gy){
-
-    for(let y=0;y<piece.shape.length;y++){
-
-        for(let x=0;x<piece.shape[y].length;x++){
-
-            if(!piece.shape[y][x]) continue;
-
-            let bx = gx + x;
-            let by = gy + y;
-
-            if(
-                bx < 0 ||
-                by < 0 ||
-                bx >= BOARD_SIZE ||
-                by >= BOARD_SIZE
-            ){
-                return false;
-            }
-
-            if(board[by][bx]){
-                return false;
-            }
-
-        }
-
-    }
-
-    return true;
-
-}
-
-function placePiece(piece,gx,gy){
-
-    if(!canPlace(piece,gx,gy))
-        return false;
-
-    for(let y=0;y<piece.shape.length;y++){
-
-        for(let x=0;x<piece.shape[y].length;x++){
-
-            if(!piece.shape[y][x])
-                continue;
-
-            board[
-                gy+y
-            ][
-                gx+x
-            ] = piece.color;
-
-        }
-
-    }
-
-    updateScore(5);
-
-    clearLines();
-
-    return true;
-
-}
-
-function clearLines(){
-
-    let rows=[];
-    let cols=[];
-
-    for(let y=0;y<BOARD_SIZE;y++){
-
-        let ok=true;
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            if(!board[y][x]){
-
-                ok=false;
-                break;
-
-            }
-
-        }
-
-        if(ok)
-            rows.push(y);
-
-    }
-
-    for(let x=0;x<BOARD_SIZE;x++){
-
-        let ok=true;
-
-        for(let y=0;y<BOARD_SIZE;y++){
-
-            if(!board[y][x]){
-
-                ok=false;
-                break;
-
-            }
-
-        }
-
-        if(ok)
-            cols.push(x);
-
-    }
-
-    if(
-        rows.length===0 &&
-        cols.length===0
-    ){
-        return;
-    }
-
-    rows.forEach(y=>{
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            board[y][x]=null;
-
-        }
-
-    });
-
-    cols.forEach(x=>{
-
-        for(let y=0;y<BOARD_SIZE;y++){
-
-            board[y][x]=null;
-
-        }
-
-    });
-
-    updateScore(
-        (rows.length+cols.length)*80
-    );
-
-}
-
-canvas.addEventListener(
-    "click",
-    e=>{
-
-        if(selectedPiece===-1)
-            return;
-
-        const rect=
-            canvas.getBoundingClientRect();
-
-        const gx=Math.floor(
-            (e.clientX-rect.left)/
-            CELL_SIZE
-        );
-
-        const gy=Math.floor(
-            (e.clientY-rect.top)/
-            CELL_SIZE
-        );
-
-        const piece=
-            tray[selectedPiece];
-
-        if(!piece)
-            return;
-
-        if(
-            placePiece(
-                piece,
-                gx,
-                gy
-            )
-        ){
-
-            tray.splice(
-                selectedPiece,
-                1
-            );
-
-            selectedPiece=-1;
-
-            document
-                .querySelectorAll(".piece")
-                .forEach(e=>
-                    e.classList.remove(
-                        "selected"
-                    )
-                );
-
-            refillTray();
-
-            drawBoard();
-
-            drawTray();
-
-            if(
-                !existsPossibleMove()
-            ){
-
-                gameOver();
-
-            }
-
-        }
-
-    }
-);
-
-function existsPossibleMove(){
-
-    for(const piece of tray){
-
-        for(let y=0;y<BOARD_SIZE;y++){
-
-            for(let x=0;x<BOARD_SIZE;x++){
-
-                if(
-                    canPlace(
-                        piece,
-                        x,
-                        y
-                    )
-                ){
-
-                    return true;
-
-                }
-
-            }
-
-        }
-
-    }
-
-    return false;
-
-}
-
-function gameOver(){
-
-    document
-        .getElementById(
-            "gameOver"
-        )
-        .classList
-        .remove("hidden");
-
-}
-
-document
-.getElementById(
-    "restart"
-)
-.onclick=()=>{
-
-    location.reload();
-
+// 색상 테이블
+const COLORS = {
+    gridBg: '#1e2530',
+    gridLine: '#2a3444',
+    block: '#ff9f43',
+    placed: '#48dbfb'
 };
 
-let dragging = false;
+// 하단 선택용 블록 3개 저장소
+let bottomBlocks = [null, null, null];
 
-let hoverX = -1;
+// 드래그 상태 관리 변수
+let isDragging = false;
+let draggedIndex = null;
+let dragX = 0; // 현재 블록이 그려질 X 위치
+let dragY = 0; // 현재 블록이 그려질 Y 위치
 
-let hoverY = -1;
-
-function screenToGrid(clientX, clientY){
-
-    const rect = canvas.getBoundingClientRect();
-
+// 랜덤 블록 생성기
+function getRandomBlock() {
+    const template = BLOCK_TEMPLATES[Math.floor(Math.random() * BLOCK_TEMPLATES.length)];
     return {
-
-        x: Math.floor(
-
-            (clientX - rect.left) / CELL_SIZE
-
-        ),
-
-        y: Math.floor(
-
-            (clientY - rect.top) / CELL_SIZE
-
-        )
-
+        shape: template,
+        color: COLORS.block,
+        width: template[0].length * (CELL_SIZE * 0.6), // 하단 표시용 축소 크기
+        height: template.length * (CELL_SIZE * 0.6)
     };
-
 }
 
-function drawGhost(){
-
-    if(
-
-        selectedPiece===-1 ||
-
-        hoverX<0 ||
-
-        hoverY<0
-
-    ) return;
-
-    const piece = tray[selectedPiece];
-
-    if(!piece) return;
-
-    const ok = canPlace(
-
-        piece,
-
-        hoverX,
-
-        hoverY
-
-    );
-
-    ctx.save();
-
-    ctx.globalAlpha = ok ? .35 : .18;
-
-    ctx.fillStyle = ok
-
-        ? piece.color
-
-        : "#ff4444";
-
-    for(let y=0;y<piece.shape.length;y++){
-
-        for(let x=0;x<piece.shape[y].length;x++){
-
-            if(!piece.shape[y][x])
-
-                continue;
-
-            roundRectCanvas(
-
-                ctx,
-
-                (hoverX+x)*CELL_SIZE+2,
-
-                (hoverY+y)*CELL_SIZE+2,
-
-                CELL_SIZE-GAP,
-
-                CELL_SIZE-GAP,
-
-                10
-
-            );
-
-            ctx.fill();
-
-        }
-
+// [2번 해결] 하단 블록 3개를 새로 채우는 함수
+function generateThreeBlocks() {
+    for (let i = 0; i < 3; i++) {
+        bottomBlocks[i] = getRandomBlock();
     }
-
-    ctx.restore();
-
 }
 
-const oldDrawBoard = drawBoard;
-
-drawBoard = function(){
-
-    oldDrawBoard();
-
-    drawGhost();
-
-};
-
-canvas.addEventListener(
-
-    "mousemove",
-
-    e=>{
-
-        if(selectedPiece===-1)
-
-            return;
-
-        const g = screenToGrid(
-
-            e.clientX,
-
-            e.clientY
-
-        );
-
-        hoverX = g.x;
-
-        hoverY = g.y;
-
-        drawBoard();
-
-    }
-
-);
-
-canvas.addEventListener(
-
-    "mouseleave",
-
-    ()=>{
-
-        hoverX = -1;
-
-        hoverY = -1;
-
-        drawBoard();
-
-    }
-
-);
-
-canvas.addEventListener(
-
-    "touchstart",
-
-    e=>{
-
-        if(selectedPiece===-1)
-
-            return;
-
-        dragging = true;
-
-        const t = e.touches[0];
-
-        const g = screenToGrid(
-
-            t.clientX,
-
-            t.clientY
-
-        );
-
-        hoverX = g.x;
-
-        hoverY = g.y;
-
-        drawBoard();
-
-        e.preventDefault();
-
-    },
-
-    {passive:false}
-
-);
-
-canvas.addEventListener(
-
-    "touchmove",
-
-    e=>{
-
-        if(
-
-            !dragging ||
-
-            selectedPiece===-1
-
-        ) return;
-
-        const t = e.touches[0];
-
-        const g = screenToGrid(
-
-            t.clientX,
-
-            t.clientY
-
-        );
-
-        hoverX = g.x;
-
-        hoverY = g.y;
-
-        drawBoard();
-
-        e.preventDefault();
-
-    },
-
-    {passive:false}
-
-);
-
-canvas.addEventListener(
-
-    "touchend",
-
-    ()=>{
-
-        dragging=false;
-
-        if(selectedPiece===-1)
-
-            return;
-
-        const piece = tray[selectedPiece];
-
-        if(
-
-            hoverX>=0 &&
-
-            hoverY>=0 &&
-
-            placePiece(
-
-                piece,
-
-                hoverX,
-
-                hoverY
-
-            )
-
-        ){
-
-            tray.splice(
-
-                selectedPiece,
-
-                1
-
-            );
-
-            selectedPiece=-1;
-
-            document
-
-                .querySelectorAll(".piece")
-
-                .forEach(e=>
-
-                    e.classList.remove(
-
-                        "selected"
-
-                    )
-
-                );
-
-            refillTray();
-
-            drawTray();
-
-            if(
-
-                !existsPossibleMove()
-
-            ){
-
-                gameOver();
-
-            }
-
+// 초기 블록 생성
+generateThreeBlocks();
+
+// 하단 블록들의 화면상 렌더링 위치(히트박스) 계산 함수
+function getBottomBlockRect(index) {
+    const slotWidth = canvas.width / 3;
+    const block = bottomBlocks[index];
+    if (!block) return null;
+
+    // 하단 영역 중앙에 배치되도록 정렬 계산
+    const x = slotWidth * index + (slotWidth - block.width) / 2;
+    const y = canvas.width + (160 - block.height) / 2;
+    return { x, y, width: block.width, height: block.height };
+}
+
+// --- 터치 이벤트 핸들러 (모바일 제어 핵심) ---
+
+// [1번 해결] 터치하자마자 노란 테두리 단계 없이 즉시 드래그 시작
+canvas.addEventListener('touchstart', (e) => {
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top;
+
+    for (let i = 0; i < 3; i++) {
+        const blockRect = getBottomBlockRect(i);
+        if (!blockRect) continue;
+
+        // 손가락이 하단 블록 범위 안으로 들어왔는지 체크
+        if (touchX >= blockRect.x && touchX <= blockRect.x + blockRect.width &&
+            touchY >= blockRect.y && touchY <= blockRect.y + blockRect.height) {
+            
+            isDragging = true;
+            draggedIndex = i;
+            
+            // 즉시 드래그 좌표 업데이트 작동
+            updateDragPosition(touchX, touchY);
+            break;
         }
-
-        hoverX=-1;
-
-        hoverY=-1;
-
-        drawBoard();
-
-    },
-
-    {passive:false}
-
-);
-
-pieceCanvas.forEach((c,i)=>{
-
-    c.draggable=false;
-
-    c.addEventListener(
-
-        "dblclick",
-
-        ()=>{
-
-            selectedPiece=i;
-
-            document
-
-                .querySelectorAll(".piece")
-
-                .forEach(e=>
-
-                    e.classList.remove(
-
-                        "selected"
-
-                    )
-
-                );
-
-            c.classList.add(
-
-                "selected"
-
-            );
-
-        }
-
-    );
-
+    }
 });
 
-let combo = 0;
+canvas.addEventListener('touchmove', (e) => {
+    if (!isDragging || draggedIndex === null) return;
+    e.preventDefault(); // 모바일 브라우저 스크롤 방지
 
-let effects = [];
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top;
 
-function Effect(x,y,color){
+    updateDragPosition(touchX, touchY);
+});
 
-    this.x=x;
+// [3, 4번 해결] 손가락 위치에 맞춰 블록 오프셋 정밀 조정 함수
+function updateDragPosition(touchX, touchY) {
+    const block = bottomBlocks[draggedIndex];
+    if (!block) return;
 
-    this.y=y;
+    // 원래 게임판 크기(CELL_SIZE) 기준으로 실제 드래그할 블록 크기 계산
+    const realW = block.shape[0].length * CELL_SIZE;
+    const realH = block.shape.length * CELL_SIZE;
 
-    this.color=color;
+    // [3번 고정] 손가락이 무조건 블록의 가로 정중앙에 위치하도록 설정
+    dragX = touchX - (realW / 2);
 
-    this.life=1;
-
+    // [4번 고정] 손가락이 블록을 가리지 않게 블록 하단보다 45px 아래에 손가락이 오도록 띄움
+    dragY = touchY - realH - 45;
 }
 
-function addEffect(x,y,color){
+canvas.addEventListener('touchend', (e) => {
+    if (!isDragging || draggedIndex === null) return;
 
-    effects.push(
+    const block = bottomBlocks[draggedIndex];
+    
+    // 현재 드래그 위치를 기반으로 게임판(Grid)의 몇 번째 칸에 매칭되는지 계산
+    const targetX = Math.round(dragX / CELL_SIZE);
+    const targetY = Math.round(dragY / CELL_SIZE);
 
-        new Effect(x,y,color)
+    // 블록 배치 가능 여부 검사
+    if (canPlaceBlock(block.shape, targetX, targetY)) {
+        placeBlock(block.shape, targetX, targetY);
+        
+        // [2번 해결] 쓴 블록 하나만 비우기(null)
+        bottomBlocks[draggedIndex] = null;
+        
+        // 줄이 꽉 찼으면 지우기
+        checkLines();
 
-    );
+        // [2번 해결] 3개 슬롯이 전부 다 비었을 때만 새 블록 3개 리프레시
+        if (bottomBlocks.every(b => b === null)) {
+            generateThreeBlocks();
+        }
+    }
 
-}
+    // 드래그 리셋
+    isDragging = false;
+    draggedIndex = null;
+});
 
-const oldClearLines = clearLines;
+// --- 게임 규칙 및 검사 로직 ---
 
-clearLines = function(){
-
-    let rows=[];
-
-    let cols=[];
-
-    for(let y=0;y<BOARD_SIZE;y++){
-
-        let ok=true;
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            if(!board[y][x]){
-
-                ok=false;
-
-                break;
-
+function canPlaceBlock(shape, startX, startY) {
+    for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+            if (shape[r][c] === 1) {
+                const gridX = startX + c;
+                const gridY = startY + r;
+                
+                // 보드판 범위를 벗어나거나 이미 블록이 차 있으면 안 됨
+                if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) return false;
+                if (grid[gridY][gridX] !== 0) return false;
             }
-
         }
-
-        if(ok) rows.push(y);
-
     }
+    return true;
+}
 
-    for(let x=0;x<BOARD_SIZE;x++){
-
-        let ok=true;
-
-        for(let y=0;y<BOARD_SIZE;y++){
-
-            if(!board[y][x]){
-
-                ok=false;
-
-                break;
-
+function placeBlock(shape, startX, startY) {
+    for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+            if (shape[r][c] === 1) {
+                grid[startY + r][startX + c] = 1;
+                score += 10;
             }
-
         }
+    }
+}
 
-        if(ok) cols.push(x);
+function checkLines() {
+    let rowsToRemove = [];
+    let colsToRemove = [];
 
+    // 가로줄 검사
+    for (let r = 0; r < GRID_SIZE; r++) {
+        if (grid[r].every(cell => cell === 1)) rowsToRemove.push(r);
     }
 
-    if(
-
-        rows.length===0 &&
-
-        cols.length===0
-
-    ){
-
-        combo=0;
-
-        return;
-
+    // 세로줄 검사
+    for (let c = 0; c < GRID_SIZE; c++) {
+        let isColFull = true;
+        for (let r = 0; r < GRID_SIZE; r++) {
+            if (grid[r][c] === 0) {
+                isColFull = false;
+                break;
+            }
+        }
+        if (isColFull) colsToRemove.push(c);
     }
 
-    combo++;
-
-    rows.forEach(y=>{
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            addEffect(
-
-                x,
-
-                y,
-
-                board[y][x]
-
-            );
-
-            board[y][x]=null;
-
-        }
-
+    // 블록 지우기 및 점수 가산
+    rowsToRemove.forEach(r => grid[r].fill(0));
+    colsToRemove.forEach(c => {
+        for (let r = 0; r < GRID_SIZE; r++) grid[r][c] = 0;
     });
 
-    cols.forEach(x=>{
+    if (rowsToRemove.length > 0 || colsToRemove.length > 0) {
+        score += (rowsToRemove.length + colsToRemove.length) * 100;
+    }
+}
 
-        for(let y=0;y<BOARD_SIZE;y++){
+// --- 화면 그리기 (Render) ---
 
-            addEffect(
+function draw() {
+    // 배경 클리어
+    ctx.fillStyle = '#0f1319';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                x,
-
-                y,
-
-                board[y][x]
-
-            );
-
-            board[y][x]=null;
-
+    // 1. 게임판 타일 격자 그리기
+    for (let r = 0; r < GRID_SIZE; r++) {
+        for (let c = 0; c < GRID_SIZE; c++) {
+            ctx.fillStyle = grid[r][c] === 1 ? COLORS.placed : COLORS.gridBg;
+            ctx.fillRect(c * CELL_SIZE + 1, r * CELL_SIZE + 1, CELL_SIZE - 2, CELL_SIZE - 2);
         }
+    }
 
-    });
+    // 2. 하단 대기 블록 3개 그리기
+    for (let i = 0; i < 3; i++) {
+        const block = bottomBlocks[i];
+        const rect = getBottomBlockRect(i);
+        if (!block || !rect) continue;
 
-    updateScore(
+        // 드래그 중인 블록은 이 위치에 그리 않고 스킵
+        if (isDragging && draggedIndex === i) continue;
 
-        (rows.length+cols.length)
-
-        *100
-
-        *combo
-
-    );
-
-}
-
-function drawEffects(){
-
-    for(let i=effects.length-1;i>=0;i--){
-
-        const e=effects[i];
-
-        e.life-=0.04;
-
-        if(e.life<=0){
-
-            effects.splice(i,1);
-
-            continue;
-
+        const miniCell = (CELL_SIZE * 0.6);
+        for (let r = 0; r < block.shape.length; r++) {
+            for (let c = 0; c < block.shape[r].length; c++) {
+                if (block.shape[r][c] === 1) {
+                    ctx.fillStyle = block.color;
+                    ctx.fillRect(rect.x + c * miniCell, rect.y + r * miniCell, miniCell - 1, miniCell - 1);
+                }
+            }
         }
-
-        ctx.save();
-
-        ctx.globalAlpha=e.life;
-
-        ctx.fillStyle=e.color;
-
-        roundRectCanvas(
-
-            ctx,
-
-            e.x*CELL_SIZE
-
-            +8
-
-            -(1-e.life)*10,
-
-            e.y*CELL_SIZE
-
-            +8
-
-            -(1-e.life)*10,
-
-            CELL_SIZE-16
-
-            +(1-e.life)*20,
-
-            CELL_SIZE-16
-
-            +(1-e.life)*20,
-
-            12
-
-        );
-
-        ctx.fill();
-
-        ctx.restore();
-
     }
 
-}
-
-let popups=[];
-
-function addPopup(text){
-
-    popups.push({
-
-        text,
-
-        y:40,
-
-        alpha:1
-
-    });
-
-}
-
-const oldUpdateScore=updateScore;
-
-updateScore=function(add){
-
-    oldUpdateScore(add);
-
-    if(combo>1){
-
-        addPopup(
-
-            combo+" COMBO!"
-
-        );
-
-    }
-
-};
-
-function drawPopup(){
-
-    ctx.save();
-
-    ctx.textAlign="center";
-
-    ctx.font="bold 34px Arial";
-
-    for(let i=popups.length-1;i>=0;i--){
-
-        const p=popups[i];
-
-        p.y-=0.5;
-
-        p.alpha-=0.01;
-
-        if(p.alpha<=0){
-
-            popups.splice(i,1);
-
-            continue;
-
+    // 3. 현재 손가락으로 드래그 중인 블록 그리기
+    if (isDragging && draggedIndex !== null) {
+        const block = bottomBlocks[draggedIndex];
+        if (block) {
+            for (let r = 0; r < block.shape.length; r++) {
+                for (let c = 0; c < block.shape[r].length; c++) {
+                    if (block.shape[r][c] === 1) {
+                        ctx.fillStyle = block.color;
+                        // 알파 효과를 주어 배치 포인트를 보기 쉽게 처리
+                        ctx.globalAlpha = 0.8;
+                        ctx.fillRect(dragX + c * CELL_SIZE, dragY + r * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1);
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+            }
         }
-
-        ctx.globalAlpha=p.alpha;
-
-        ctx.fillStyle="#ffffff";
-
-        ctx.fillText(
-
-            p.text,
-
-            canvas.width/2,
-
-            p.y
-
-        );
-
     }
 
-    ctx.restore();
+    // 점수 표시 영역
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px sans-serif';
+    ctx.fillText(`SCORE: ${score}`, 20, canvas.width + 30);
 
+    requestAnimationFrame(draw);
 }
 
-function loop(){
-
-    drawBoard();
-
-    drawEffects();
-
-    drawPopup();
-
-    requestAnimationFrame(loop);
-
-}
-
-loop();
-
-let spawnAnimation = 1;
-
-function animateTray(){
-
-    spawnAnimation += 0.08;
-
-    if(spawnAnimation>1)
-
-        spawnAnimation=1;
-
-    pieceCanvas.forEach(c=>{
-
-        c.style.transform =
-
-            "scale("+spawnAnimation+")";
-
-        c.style.opacity =
-
-            spawnAnimation;
-
-    });
-
-}
-
-const oldRefillTray = refillTray;
-
-refillTray = function(){
-
-    while(tray.length<3){
-
-        tray.push(
-
-            new Piece(
-
-                balancedShape()
-
-            )
-
-        );
-
-    }
-
-    spawnAnimation = 0;
-
-    drawTray();
-
-}
-
-function balancedShape(){
-
-    const pool=[];
-
-    SHAPES.forEach(shape=>{
-
-        let count=0;
-
-        for(const r of shape)
-
-            for(const c of r)
-
-                if(c) count++;
-
-        let weight=6-count;
-
-        if(weight<1)
-
-            weight=1;
-
-        for(let i=0;i<weight;i++)
-
-            pool.push(shape);
-
-    });
-
-    return JSON.parse(
-
-        JSON.stringify(
-
-            pool[
-
-                Math.floor(
-
-                    Math.random()*pool.length
-
-                )
-
-            ]
-
-        )
-
-    );
-
-}
-
-const oldGameOver = gameOver;
-
-gameOver=function(){
-
-    const panel=
-
-        document.getElementById(
-
-            "gameOver"
-
-        );
-
-    panel.classList.remove(
-
-        "hidden"
-
-    );
-
-    panel.style.opacity=0;
-
-    panel.style.transition=
-
-        "opacity .25s";
-
-    requestAnimationFrame(()=>{
-
-        panel.style.opacity=1;
-
-    });
-
-}
-
-document
-
-.getElementById(
-
-    "restart"
-
-)
-
-.onclick=()=>{
-
-    score=0;
-
-    document.getElementById(
-
-        "score"
-
-    ).textContent=0;
-
-    combo=0;
-
-    effects.length=0;
-
-    popups.length=0;
-
-    tray.length=0;
-
-    selectedPiece=-1;
-
-    hoverX=-1;
-
-    hoverY=-1;
-
-    for(let y=0;y<BOARD_SIZE;y++){
-
-        for(let x=0;x<BOARD_SIZE;x++){
-
-            board[y][x]=null;
-
-        }
-
-    }
-
-    document
-
-    .getElementById(
-
-        "gameOver"
-
-    )
-
-    .classList
-
-    .add("hidden");
-
-    refillTray();
-
-    drawBoard();
-
-};
-
-setInterval(
-
-    animateTray,
-
-    16
-
-);
-
-// ---------------------
-
-// 게임 시작
-
-// ---------------------
-
-refillTray();
-
-drawBoard();
-
-// ============================================================================
-
-// END
+// 게임 메인 루프 스타트
+draw();
